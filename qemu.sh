@@ -15,10 +15,11 @@ then
     cp /usr/share/OVMF/OVMF_CODE.fd build/qemu/firmware.rom
 fi
 
+#TODO: use virtio GPU?
 kvm \
     -bios build/qemu/firmware.rom \
     -cpu host \
     -hda build/qemu/image.raw \
     -m 4G \
     -smp 4 \
-    -vga virtio
+    -vga qxl
