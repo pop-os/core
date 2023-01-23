@@ -3,7 +3,7 @@ set -e
 PACKAGES=(
     kernelstub
     linux-system76
-    pop-default-settings
+    #pop-default-settings
     systemd
 )
 
@@ -32,6 +32,15 @@ apt-get upgrade --yes
 
 echo "Installing APT packages: ${PACKAGES[@]}"
 apt-get install --yes "${PACKAGES[@]}"
+
+echo "Updating APT metadata again"
+apt-get update
+
+echo "Upgrading APT packages again"
+apt-get upgrade --allow-downgrades --yes
+
+echo "Automatically removing unused APT packages"
+apt-get autoremove --purge
 
 echo "Installing systemd-boot"
 bootctl install --no-variables

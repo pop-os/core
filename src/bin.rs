@@ -113,7 +113,9 @@ fn install(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
 //TODO: use cache
 pub fn bin() -> io::Result<()> {
     //TODO: ensure there are no active mounts inside any of the partial directories before removal!
-    let mut cache = Cache::new("build", |name| ["debootstrap", "image"].contains(&name))?;
+    let mut cache = Cache::new("build/cache", |name| {
+        ["debootstrap", "image"].contains(&name)
+    })?;
 
     let (debootstrap_dir, debootstrap_rebuilt) =
         cache.build("debootstrap", false, |partial_dir| {
