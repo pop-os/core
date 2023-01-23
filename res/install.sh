@@ -3,7 +3,9 @@ set -e
 PACKAGES=(
     kernelstub
     linux-system76
+    network-manager
     #pop-default-settings
+    sudo
     systemd
 )
 
@@ -42,6 +44,9 @@ apt-get upgrade --allow-downgrades --yes
 echo "Automatically removing unused APT packages"
 apt-get autoremove --purge
 
+echo "Removing temporary APT data"
+apt-get clean
+
 echo "Installing systemd-boot"
 bootctl install --no-variables
 
@@ -79,6 +84,23 @@ PARTUUID=${EFI_PARTUUID}  /boot/efi  vfat  umask=0077  0  0
 UUID=${ROOT_UUID}  /  btrfs  defaults  0  1
 EOF
 
-#TODO: remove this!
-echo "Setting root password to system76"
-echo "root:system76" | chpasswd
+echo "Setting up NetworkManager"
+touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
+
+echo "Creating user system76"
+adduser \
+    --quiet \
+    --disabled-password \
+    --shell /bin/bash \
+    --home /home/system76 \
+    --gecos System76 \
+    system76
+
+echo "Adding user system76 to adm group"
+adduser system76 adm
+
+echo "Adding user system76 to sudo group"
+adduser system76 sudo
+
+echo "Setting user system76 password to system76"
+echo "system76:system76" | chpasswd
