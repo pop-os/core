@@ -9,6 +9,7 @@ PACKAGES=(
     pop-default-settings
     # Desktop
     pop-gtk-theme
+    pop-icon-theme
     pop-shop
     sway
     xwayland
