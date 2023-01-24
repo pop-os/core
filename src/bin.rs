@@ -147,18 +147,19 @@ pub fn bin() -> io::Result<()> {
             Ok(())
         })?;
 
-    let (install_dir, install_rebuilt) = cache.build("install", false, |partial_dir| {
-        log::info!("Copying debootstrap files");
-        Command::new("cp")
-            .arg("--archive")
-            .arg("--no-target-directory")
-            .arg(&debootstrap_dir)
-            .arg(&partial_dir)
-            .status()
-            .and_then(check_status)?;
+    let (install_dir, install_rebuilt) =
+        cache.build("install", debootstrap_rebuilt, |partial_dir| {
+            log::info!("Copying debootstrap files");
+            Command::new("cp")
+                .arg("--archive")
+                .arg("--no-target-directory")
+                .arg(&debootstrap_dir)
+                .arg(&partial_dir)
+                .status()
+                .and_then(check_status)?;
 
-        install(&partial_dir)
-    })?;
+            install(&partial_dir)
+        })?;
 
     let (image_dir, image_rebuilt) = cache.build("image", install_rebuilt, |partial_dir| {
         fs::create_dir(&partial_dir)?;
@@ -238,6 +239,17 @@ pub fn bin() -> io::Result<()> {
                 log::info!("Mounting EFI directory");
                 Mount::new(&part1_file, &mount_efi_dir, "vfat", 0, None)?
                     .with(|_mount_efi| image(&mount_dir, &mount_efi_dir))?;
+
+                log::info!("Make root read-only");
+                Command::new("btrfs")
+                    .arg("property")
+                    .arg("set")
+                    .arg("-ts")
+                    .arg(&mount_dir)
+                    .arg("ro")
+                    .arg("true")
+                    .status()
+                    .and_then(check_status)?;
 
                 Ok(())
             })?;
