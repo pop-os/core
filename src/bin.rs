@@ -10,34 +10,34 @@ use crate::{
     Cache, Debootstrap, Loopback, Mount,
 };
 
-fn install(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
+fn install(partial_dir: &Path) -> io::Result<()> {
     log::info!("Resetting hostname");
     fs::write(
-        mount_dir.join("etc/hostname"),
+        partial_dir.join("etc/hostname"),
         include_bytes!("../res/etc/hostname"),
     )?;
 
     log::info!("Resetting Ubuntu APT repository");
     fs::write(
-        mount_dir.join("etc/apt/sources.list"),
+        partial_dir.join("etc/apt/sources.list"),
         include_bytes!("../res/etc/apt/sources.list"),
     )?;
     fs::write(
-        mount_dir.join("etc/apt/sources.list.d/system.sources"),
+        partial_dir.join("etc/apt/sources.list.d/system.sources"),
         include_bytes!("../res/etc/apt/sources.list.d/system.sources"),
     )?;
 
     log::info!("Adding Pop!_OS APT repository");
     fs::write(
-        mount_dir.join("etc/apt/sources.list.d/pop-os-release.sources"),
+        partial_dir.join("etc/apt/sources.list.d/pop-os-release.sources"),
         include_bytes!("../res/etc/apt/sources.list.d/pop-os-release.sources"),
     )?;
     fs::write(
-        mount_dir.join("etc/apt/trusted.gpg.d/pop-keyring-2017-archive.gpg"),
+        partial_dir.join("etc/apt/trusted.gpg.d/pop-keyring-2017-archive.gpg"),
         include_bytes!("../res/etc/apt/trusted.gpg.d/pop-keyring-2017-archive.gpg"),
     )?;
 
-    let kernelstub_dir = mount_dir.join("etc/kernelstub");
+    let kernelstub_dir = partial_dir.join("etc/kernelstub");
     if !kernelstub_dir.exists() {
         log::info!("Creating kernelstub configuration directory");
         fs::create_dir(&kernelstub_dir)?;
@@ -50,10 +50,27 @@ fn install(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
 
     log::info!("Copying install script");
     fs::write(
-        mount_dir.join("install.sh"),
+        partial_dir.join("install.sh"),
         include_bytes!("../res/install.sh"),
     )?;
 
+    log::info!("Running install script");
+    Command::new("systemd-nspawn")
+        .arg("--machine=pop-core-install")
+        .arg("-D")
+        .arg(&partial_dir)
+        .arg("bash")
+        .arg("/install.sh")
+        .status()
+        .and_then(check_status)?;
+
+    log::info!("Removing install script");
+    fs::remove_file(partial_dir.join("install.sh"))?;
+
+    Ok(())
+}
+
+fn image(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
     log::info!("Getting root UUID");
     let root_uuid = {
         let output = Command::new("findmnt")
@@ -92,20 +109,26 @@ fn install(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
             .to_string()
     };
 
-    log::info!("Running install script");
+    log::info!("Copying image script");
+    fs::write(
+        mount_dir.join("image.sh"),
+        include_bytes!("../res/image.sh"),
+    )?;
+
+    log::info!("Running image script");
     Command::new("systemd-nspawn")
         .arg("--machine=pop-core-install")
         .arg("-D")
         .arg(&mount_dir)
         .arg("bash")
-        .arg("/install.sh")
+        .arg("/image.sh")
         .arg(&root_uuid)
         .arg(&efi_partuuid)
         .status()
         .and_then(check_status)?;
 
-    log::info!("Removing install script");
-    fs::remove_file(mount_dir.join("install.sh"))?;
+    log::info!("Removing image script");
+    fs::remove_file(mount_dir.join("image.sh"))?;
 
     Ok(())
 }
@@ -114,7 +137,7 @@ fn install(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
 pub fn bin() -> io::Result<()> {
     //TODO: ensure there are no active mounts inside any of the partial directories before removal!
     let mut cache = Cache::new("build/cache", |name| {
-        ["debootstrap", "image"].contains(&name)
+        ["debootstrap", "install", "image"].contains(&name)
     })?;
 
     let (debootstrap_dir, debootstrap_rebuilt) =
@@ -124,7 +147,20 @@ pub fn bin() -> io::Result<()> {
             Ok(())
         })?;
 
-    let (image_dir, image_rebuilt) = cache.build("image", debootstrap_rebuilt, |partial_dir| {
+    let (install_dir, install_rebuilt) = cache.build("install", false, |partial_dir| {
+        log::info!("Copying debootstrap files");
+        Command::new("cp")
+            .arg("--archive")
+            .arg("--no-target-directory")
+            .arg(&debootstrap_dir)
+            .arg(&partial_dir)
+            .status()
+            .and_then(check_status)?;
+
+        install(&partial_dir)
+    })?;
+
+    let (image_dir, image_rebuilt) = cache.build("image", install_rebuilt, |partial_dir| {
         fs::create_dir(&partial_dir)?;
 
         //TODO: move logic to Rust as much as possible
@@ -174,11 +210,21 @@ pub fn bin() -> io::Result<()> {
             let mount_dir = partial_dir.join("mount");
             fs::create_dir(&mount_dir)?;
             Mount::new(&part2_file, &mount_dir, "btrfs", 0, None)?.with(|_mount| {
-                log::info!("Copying debootstrap files");
+                for subvolume in &["home", "tmp", "usr", "var"] {
+                    log::info!("Creating subvolume for /{}", subvolume);
+                    Command::new("btrfs")
+                        .arg("subvolume")
+                        .arg("create")
+                        .arg(mount_dir.join(subvolume))
+                        .status()
+                        .and_then(check_status)?;
+                }
+
+                log::info!("Copying install files");
                 Command::new("cp")
                     .arg("--archive")
                     .arg("--no-target-directory")
-                    .arg(&debootstrap_dir)
+                    .arg(&install_dir)
                     .arg(&mount_dir)
                     .status()
                     .and_then(check_status)?;
@@ -191,7 +237,7 @@ pub fn bin() -> io::Result<()> {
 
                 log::info!("Mounting EFI directory");
                 Mount::new(&part1_file, &mount_efi_dir, "vfat", 0, None)?
-                    .with(|_mount_efi| install(&mount_dir, &mount_efi_dir))?;
+                    .with(|_mount_efi| image(&mount_dir, &mount_efi_dir))?;
 
                 Ok(())
             })?;
