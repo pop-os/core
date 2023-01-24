@@ -10,7 +10,7 @@ use crate::{
     Cache, Debootstrap, Loopback, Mount,
 };
 
-fn install(partial_dir: &Path) -> io::Result<()> {
+fn chroot(partial_dir: &Path) -> io::Result<()> {
     log::info!("Resetting hostname");
     fs::write(
         partial_dir.join("etc/hostname"),
@@ -48,24 +48,24 @@ fn install(partial_dir: &Path) -> io::Result<()> {
         include_bytes!("../res/etc/kernelstub/configuration"),
     )?;
 
-    log::info!("Copying install script");
+    log::info!("Copying chroot script");
     fs::write(
-        partial_dir.join("install.sh"),
-        include_bytes!("../res/install.sh"),
+        partial_dir.join("chroot.sh"),
+        include_bytes!("../res/chroot.sh"),
     )?;
 
-    log::info!("Running install script");
+    log::info!("Running chroot script");
     Command::new("systemd-nspawn")
         .arg("--machine=pop-core-install")
         .arg("-D")
         .arg(&partial_dir)
         .arg("bash")
-        .arg("/install.sh")
+        .arg("/chroot.sh")
         .status()
         .and_then(check_status)?;
 
-    log::info!("Removing install script");
-    fs::remove_file(partial_dir.join("install.sh"))?;
+    log::info!("Removing chroot script");
+    fs::remove_file(partial_dir.join("chroot.sh"))?;
 
     Ok(())
 }
@@ -137,7 +137,7 @@ fn image(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
 pub fn bin() -> io::Result<()> {
     //TODO: ensure there are no active mounts inside any of the partial directories before removal!
     let mut cache = Cache::new("build/cache", |name| {
-        ["debootstrap", "install", "image"].contains(&name)
+        ["chroot", "debootstrap", "image"].contains(&name)
     })?;
 
     let (debootstrap_dir, debootstrap_rebuilt) =
@@ -147,8 +147,8 @@ pub fn bin() -> io::Result<()> {
             Ok(())
         })?;
 
-    let (install_dir, install_rebuilt) =
-        cache.build("install", debootstrap_rebuilt, |partial_dir| {
+    let (chroot_dir, chroot_rebuilt) =
+        cache.build("chroot", debootstrap_rebuilt, |partial_dir| {
             log::info!("Copying debootstrap files");
             Command::new("cp")
                 .arg("--archive")
@@ -158,10 +158,10 @@ pub fn bin() -> io::Result<()> {
                 .status()
                 .and_then(check_status)?;
 
-            install(&partial_dir)
+            chroot(&partial_dir)
         })?;
 
-    let (image_dir, image_rebuilt) = cache.build("image", install_rebuilt, |partial_dir| {
+    let (image_dir, image_rebuilt) = cache.build("image", chroot_rebuilt, |partial_dir| {
         fs::create_dir(&partial_dir)?;
 
         //TODO: move logic to Rust as much as possible
@@ -221,11 +221,11 @@ pub fn bin() -> io::Result<()> {
                         .and_then(check_status)?;
                 }
 
-                log::info!("Copying install files");
+                log::info!("Copying chroot files");
                 Command::new("cp")
                     .arg("--archive")
                     .arg("--no-target-directory")
-                    .arg(&install_dir)
+                    .arg(&chroot_dir)
                     .arg(&mount_dir)
                     .status()
                     .and_then(check_status)?;

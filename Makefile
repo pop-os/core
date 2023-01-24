@@ -1,6 +1,7 @@
 SRC=\
 	Cargo.lock \
 	Cargo.toml \
+	$(shell find res -type f) \
 	$(shell find src -type f)
 
 all: build/cache/image/image.raw
@@ -10,7 +11,7 @@ target/release/pop-core: $(SRC)
 
 build/cache/image/image.raw: target/release/pop-core
 	mkdir -p build/cache
-	time sudo $<
+	sudo $<
 
 build/qemu/firmware.rom:
 	mkdir -p build/qemu
