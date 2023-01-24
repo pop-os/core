@@ -139,47 +139,13 @@ pub fn bin() -> io::Result<()> {
             .status()
             .and_then(check_status)?;
 
-        log::info!("Creating partition table");
-        Command::new("parted")
-            .arg("--script")
+        log::info!("Partitioning image file");
+        Command::new("sgdisk")
+            .arg("--new=1:0:+512M")
+            .arg("--typecode=1:0xef00")
+            .arg("--new=2:0:0")
+            .arg("--typecode=2:0x8304")
             .arg(&image_file)
-            .arg("mklabel")
-            .arg("gpt")
-            .status()
-            .and_then(check_status)?;
-
-        log::info!("Adding EFI partition");
-        Command::new("parted")
-            .arg("--script")
-            .arg(&image_file)
-            .arg("mkpart")
-            .arg("primary")
-            .arg("fat32")
-            .arg("0%")
-            .arg("512")
-            .status()
-            .and_then(check_status)?;
-
-        log::info!("Setting EFI partition as bootable");
-        Command::new("parted")
-            .arg("--script")
-            .arg(&image_file)
-            .arg("set")
-            .arg("1")
-            .arg("boot")
-            .arg("on")
-            .status()
-            .and_then(check_status)?;
-
-        log::info!("Adding root partition");
-        Command::new("parted")
-            .arg("--script")
-            .arg(&image_file)
-            .arg("mkpart")
-            .arg("primary")
-            .arg("btrfs")
-            .arg("512")
-            .arg("100%")
             .status()
             .and_then(check_status)?;
 
