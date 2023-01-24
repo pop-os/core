@@ -56,21 +56,3 @@ apt-get clean
 echo "Setting up NetworkManager"
 mkdir -p /etc/NetworkManager/conf.d
 touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
-
-echo "Creating user system76"
-adduser \
-    --quiet \
-    --disabled-password \
-    --shell /bin/bash \
-    --home /home/system76 \
-    --gecos System76 \
-    system76
-
-echo "Adding user system76 to adm group"
-adduser system76 adm
-
-echo "Adding user system76 to sudo group"
-adduser system76 sudo
-
-echo "Setting user system76 password to system76"
-echo "system76:system76" | chpasswd

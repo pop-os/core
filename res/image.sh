@@ -16,6 +16,8 @@ fi
 
 export LC_ALL=C
 
+######## BOOTLOADER SETUP ########
+
 echo "Installing systemd-boot"
 bootctl install --no-variables
 
@@ -52,3 +54,25 @@ cat > /etc/fstab <<EOF
 PARTUUID=${EFI_PARTUUID}  /boot/efi  vfat  umask=0077  0  0
 UUID=${ROOT_UUID}  /  btrfs  defaults  0  1
 EOF
+
+######## USER SETUP ########
+
+USER=pop
+
+echo "Creating user ${USER}"
+adduser \
+    --quiet \
+    --disabled-password \
+    --shell /bin/bash \
+    --home "/home/${USER}" \
+    --gecos "${USER}" \
+    "${USER}"
+
+echo "Adding user ${USER} to adm group"
+adduser "${USER}" adm
+
+echo "Adding user ${USER} to sudo group"
+adduser "${USER}" sudo
+
+echo "Setting user ${USER} password to ${USER}"
+echo "${USER}:${USER}" | chpasswd
