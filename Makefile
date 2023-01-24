@@ -22,11 +22,15 @@ build/qemu/image.raw: build/cache/image/image.raw
 	cp $< $@
 
 qemu: build/qemu/image.raw build/qemu/firmware.rom
-	#TODO: use virtio GPU?
 	kvm \
 	    -bios build/qemu/firmware.rom \
 	    -cpu host \
-	    -hda $< \
-	    -m 4G \
-	    -smp 4 \
-	    -vga qxl
+		-device ich9-intel-hda \
+		-device hda-duplex \
+		-device virtio-vga-gl \
+		-display gtk,gl=on \
+		-drive file=$<,format=raw,if=none,id=drive0 -device nvme,drive=drive0,serial=DRIVE0 \
+		-m 4G \
+		-machine q35 \
+		-smp 4 \
+		-vga none

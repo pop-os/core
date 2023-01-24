@@ -8,12 +8,16 @@ PACKAGES=(
     network-manager
     pop-default-settings
     # Desktop
+    alacritty
+    cosmic-session
     flatpak
+    libegl1
+    libgl1-mesa-dri
+    libglib2.0-bin
     pop-gtk-theme
     pop-icon-theme
-    pop-shop
-    sway
-    xwayland
+    pop-wallpapers
+    wireplumber
 )
 
 if [ "${HOSTNAME}" != "pop-core-install" ]

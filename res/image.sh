@@ -76,3 +76,46 @@ adduser "${USER}" sudo
 
 echo "Setting user ${USER} password to ${USER}"
 echo "${USER}:${USER}" | chpasswd
+
+echo "Creating pop-core-autologin binary"
+cat > /usr/bin/pop-core-autologin <<EOF
+#!/usr/bin/env bash
+
+set -ex
+
+gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+gsettings set org.gnome.desktop.interface cursor-theme Pop
+gsettings set org.gnome.desktop.interface gtk-theme Pop-dark
+gsettings set org.gnome.desktop.interface icon-theme Pop
+
+exec start-cosmic
+EOF
+
+echo "Setting pop-core-autologin binary executable"
+chmod +x /usr/bin/pop-core-autologin
+
+echo "Creating pop-core-autologin service"
+cat > /usr/lib/systemd/system/pop-core-autologin.service <<EOF
+[Unit]
+Description=pop-core-autologin
+OnFailure=getty@tty1.service
+Conflicts=getty@tty1.service
+After=graphical.target
+
+[Service]
+User=${USER}
+ExecStart=/usr/bin/pop-core-autologin
+WorkingDirectory=/home/${USER}
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+
+[Install]
+WantedBy=graphical.target
+EOF
+
+echo "Enabling pop-core-autologin service"
+mkdir -p /etc/systemd/system/graphical.target.wants
+ln -s /usr/lib/systemd/system/pop-core-autologin.service /etc/systemd/system/graphical.target.wants/pop-core-autologin.service
