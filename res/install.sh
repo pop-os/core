@@ -1,12 +1,17 @@
 set -e
 
 PACKAGES=(
+    # Core
+    flatpak
     kernelstub
     linux-system76
     network-manager
-    #pop-default-settings
-    sudo
-    systemd
+    pop-default-settings
+    # Desktop
+    pop-gtk-theme
+    pop-shop
+    sway
+    xwayland
 )
 
 if [ "${HOSTNAME}" != "pop-core-install" ]
@@ -32,6 +37,13 @@ apt-get update
 echo "Upgrading APT packages"
 apt-get upgrade --yes
 
+echo "Mark all APT packages as automatically installed"
+manual="$(apt-mark showmanual)"
+if [ -n "${manual}" ]
+then
+	apt-mark auto $manual
+fi
+
 echo "Installing APT packages: ${PACKAGES[@]}"
 apt-get install --yes "${PACKAGES[@]}"
 
@@ -42,7 +54,7 @@ echo "Upgrading APT packages again"
 apt-get upgrade --allow-downgrades --yes
 
 echo "Automatically removing unused APT packages"
-apt-get autoremove --purge
+apt-get autoremove --purge --yes
 
 echo "Removing temporary APT data"
 apt-get clean
@@ -85,6 +97,7 @@ UUID=${ROOT_UUID}  /  btrfs  defaults  0  1
 EOF
 
 echo "Setting up NetworkManager"
+mkdir -p /etc/NetworkManager/conf.d
 touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
 
 echo "Creating user system76"
