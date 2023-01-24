@@ -210,7 +210,7 @@ pub fn bin() -> io::Result<()> {
             let mount_dir = partial_dir.join("mount");
             fs::create_dir(&mount_dir)?;
             Mount::new(&part2_file, &mount_dir, "btrfs", 0, None)?.with(|_mount| {
-                for subvolume in &["home", "tmp", "usr", "var"] {
+                for subvolume in &["home", "srv", "tmp", "var"] {
                     log::info!("Creating subvolume for /{}", subvolume);
                     Command::new("btrfs")
                         .arg("subvolume")
