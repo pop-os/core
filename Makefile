@@ -34,3 +34,6 @@ qemu: build/qemu/image.raw build/qemu/firmware.rom
 		-machine q35 \
 		-smp 4 \
 		-vga none
+
+systemd-nspawn: build/qemu/image.raw
+	sudo systemd-nspawn --machine=pop-core --image=$<

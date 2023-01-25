@@ -230,7 +230,7 @@ pub fn bin() -> io::Result<()> {
                     .status()
                     .and_then(check_status)?;
 
-                let mount_efi_dir = mount_dir.join("boot/efi");
+                let mount_efi_dir = mount_dir.join("efi");
                 if !mount_efi_dir.exists() {
                     log::info!("Creating EFI directory");
                     fs::create_dir(&mount_efi_dir)?;

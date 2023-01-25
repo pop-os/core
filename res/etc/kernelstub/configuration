@@ -2,11 +2,13 @@
     "default": {
         "kernel_options": [
             "quiet",
+            "loglevel=0",
+            "systemd.show_status=false",
             "splash"
         ],
-        "esp_path": "/boot/efi",
-        "setup_loader": false,
-        "manage_mode": false,
+        "esp_path": "/efi",
+        "setup_loader": true,
+        "manage_mode": true,
         "force_update": false,
         "live_mode": false,
         "config_rev": 3
@@ -15,9 +17,10 @@
         "kernel_options": [
             "quiet",
             "loglevel=0",
-            "systemd.show_status=false"
+            "systemd.show_status=false",
+            "splash"
         ],
-        "esp_path": "/boot/efi",
+        "esp_path": "/efi",
         "setup_loader": true,
         "manage_mode": true,
         "force_update": false,
