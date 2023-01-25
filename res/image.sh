@@ -83,24 +83,54 @@ ln -s /usr/lib/systemd/system/pop-core-autologin.service /etc/systemd/system/gra
 
 ######## BOOTLOADER SETUP ########
 
+UNIFIED=1
+CMDLINE="root=UUID=${ROOT_UUID} ro"
+
 echo "Installing systemd-boot"
 bootctl install --make-machine-id-directory=no --no-variables
 
 #TODO: fix issues with ROOT_UUID not being found: kernelstub --manage-only --no-loader --verbose
 
-echo "Copying loader files"
+echo "Creating EFI directory"
 EFI_DIR="EFI/Pop_OS-${ROOT_UUID}"
 mkdir -p "/efi/${EFI_DIR}"
-cp /boot/initrd.img "/efi/${EFI_DIR}/initrd.img"
+
+if [ "${UNIFIED}" == "1" ]
+then
+
+echo "Creating unified kernel"
+CMDLINE_FILE="$(mktemp)"
+echo -n "${CMDLINE}" > "${CMDLINE_FILE}"
+objcopy \
+    --add-section .osrel=/usr/lib/os-release --change-section-vma .osrel=0x20000 \
+    --add-section .cmdline="${CMDLINE_FILE}" --change-section-vma .cmdline=0x30000 \
+    --add-section .linux=/boot/vmlinuz --change-section-vma .linux=0x2000000 \
+    --add-section .initrd=/boot/initrd.img --change-section-vma .initrd=0x3000000 \
+    /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
+    "/efi/${EFI_DIR}/vmlinuz.efi"
+rm "${CMDLINE_FILE}"
+
+echo "Setting up loader entry"
+cat > /efi/loader/entries/Pop_OS-current.conf <<EOF
+title Pop!_OS
+efi /${EFI_DIR}/vmlinuz.efi
+EOF
+
+else
+
+echo "Copying kernel and initrd"
 cp /boot/vmlinuz "/efi/${EFI_DIR}/vmlinuz.efi"
+cp /boot/initrd.img "/efi/${EFI_DIR}/initrd.img"
 
 echo "Setting up loader entry"
 cat > /efi/loader/entries/Pop_OS-current.conf <<EOF
 title Pop!_OS
 linux /${EFI_DIR}/vmlinuz.efi
 initrd /${EFI_DIR}/initrd.img
-options root=UUID=${ROOT_UUID} ro
+options ${CMDLINE}
 EOF
+
+fi
 
 echo "Setting up loader configuration"
 cat > /efi/loader/loader.conf <<EOF
