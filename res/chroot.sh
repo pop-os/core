@@ -2,6 +2,7 @@ set -e
 
 PACKAGES=(
     # Core
+    binutils # for unified kernel image
     btrfs-progs
     kernelstub
     linux-system76
@@ -11,9 +12,9 @@ PACKAGES=(
     alacritty
     cosmic-session
     flatpak
-    libegl1
-    libgl1-mesa-dri
-    libglib2.0-bin
+    libegl1 # cosmic-comp dependency
+    libgl1-mesa-dri # cosmic-comp dependency
+    libglib2.0-bin # for gsettings command
     pop-gtk-theme
     pop-icon-theme
     pop-wallpapers
