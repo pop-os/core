@@ -119,3 +119,22 @@ EOF
 echo "Enabling pop-core-autologin service"
 mkdir -p /etc/systemd/system/graphical.target.wants
 ln -s /usr/lib/systemd/system/pop-core-autologin.service /etc/systemd/system/graphical.target.wants/pop-core-autologin.service
+
+echo "Relocating folders"
+mv /media /var/media
+ln -s var/media /media
+
+mv /mnt /var/mnt
+ln -s var/mnt /mnt
+
+mv /opt /var/opt
+ln -s var/opt /opt
+
+mv /root /home/root
+ln -s home/root /root
+
+mv /srv /var/srv
+ln -s var/srv /srv
+
+mv /usr/local /var/usrlocal
+ln -s var/usrlocal /usr/local
