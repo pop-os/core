@@ -185,7 +185,14 @@ sed -i 's/"live_mode": true,/"live_mode": false,/' /etc/kernelstub/configuration
 popd
 rm -rf "${TEMPDIR}"
 
-######## MISC SETUP (MOVE TO CHROOT.SH?) ########
+######## MISC SETUP #######
+
+echo "Setting up NetworkManager"
+mkdir -p /etc/NetworkManager/conf.d
+touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
+
+echo "Setting up systemd-resolved"
+ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 echo "Relocating folders"
 mv /media /var/media

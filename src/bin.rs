@@ -10,7 +10,30 @@ use crate::{
     Cache, Debootstrap, Loopback, Mount,
 };
 
-fn chroot(partial_dir: &Path) -> io::Result<()> {
+const SERVER_PACKAGES: &'static [&'static str] = &[
+    "binutils", // for unified kernel image
+    "btrfs-progs",
+    "kernelstub",
+    "linux-system76",
+    "network-manager",
+    "pop-default-settings",
+    "shim-signed", // for secure boot
+];
+
+const DESKTOP_PACKAGES: &'static [&'static str] = &[
+    "alacritty",
+    "cosmic-session",
+    "flatpak",
+    "libegl1", // cosmic-comp dependency
+    "libgl1-mesa-dri", // cosmic-comp dependency
+    "libglib2.0-bin", // for gsettings command
+    "pop-gtk-theme",
+    "pop-icon-theme",
+    "pop-wallpapers",
+    "wireplumber",
+];
+
+fn server(partial_dir: &Path) -> io::Result<()> {
     log::info!("Resetting hostname");
     fs::write(
         partial_dir.join("etc/hostname"),
@@ -48,24 +71,52 @@ fn chroot(partial_dir: &Path) -> io::Result<()> {
         include_bytes!("../res/etc/kernelstub/configuration"),
     )?;
 
-    log::info!("Copying chroot script");
+    log::info!("Copying apt script");
     fs::write(
-        partial_dir.join("chroot.sh"),
-        include_bytes!("../res/chroot.sh"),
+        partial_dir.join("apt.sh"),
+        include_bytes!("../res/apt.sh"),
     )?;
 
-    log::info!("Running chroot script");
+    log::info!("Running apt script");
     Command::new("systemd-nspawn")
         .arg("--machine=pop-core-install")
+        .arg("--resolv-conf=replace-host")
         .arg("-D")
         .arg(&partial_dir)
         .arg("bash")
-        .arg("/chroot.sh")
+        .arg("/apt.sh")
+        .args(SERVER_PACKAGES)
         .status()
         .and_then(check_status)?;
 
-    log::info!("Removing chroot script");
-    fs::remove_file(partial_dir.join("chroot.sh"))?;
+    log::info!("Removing apt script");
+    fs::remove_file(partial_dir.join("apt.sh"))?;
+
+    Ok(())
+}
+
+fn desktop(partial_dir: &Path) -> io::Result<()> {
+    log::info!("Copying apt script");
+    fs::write(
+        partial_dir.join("apt.sh"),
+        include_bytes!("../res/apt.sh"),
+    )?;
+
+    log::info!("Running apt script");
+    Command::new("systemd-nspawn")
+        .arg("--machine=pop-core-install")
+        .arg("--resolv-conf=replace-host")
+        .arg("-D")
+        .arg(&partial_dir)
+        .arg("bash")
+        .arg("/apt.sh")
+        .args(SERVER_PACKAGES)
+        .args(DESKTOP_PACKAGES)
+        .status()
+        .and_then(check_status)?;
+
+    log::info!("Removing apt script");
+    fs::remove_file(partial_dir.join("apt.sh"))?;
 
     Ok(())
 }
@@ -137,7 +188,7 @@ fn image(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
 pub fn bin() -> io::Result<()> {
     //TODO: ensure there are no active mounts inside any of the partial directories before removal!
     let mut cache = Cache::new("build/cache", |name| {
-        ["chroot", "debootstrap", "image"].contains(&name)
+        ["debootstrap", "image", "server"].contains(&name)
     })?;
 
     let (debootstrap_dir, debootstrap_rebuilt) =
@@ -147,8 +198,8 @@ pub fn bin() -> io::Result<()> {
             Ok(())
         })?;
 
-    let (chroot_dir, chroot_rebuilt) =
-        cache.build("chroot", debootstrap_rebuilt, |partial_dir| {
+    let (server_dir, server_rebuilt) =
+        cache.build("server", debootstrap_rebuilt, |partial_dir| {
             log::info!("Copying debootstrap files");
             Command::new("cp")
                 .arg("--archive")
@@ -158,10 +209,24 @@ pub fn bin() -> io::Result<()> {
                 .status()
                 .and_then(check_status)?;
 
-            chroot(&partial_dir)
+            server(&partial_dir)
         })?;
 
-    let (image_dir, image_rebuilt) = cache.build("image", chroot_rebuilt, |partial_dir| {
+    let (desktop_dir, desktop_rebuilt) =
+        cache.build("desktop", server_rebuilt, |partial_dir| {
+            log::info!("Copying server files");
+            Command::new("cp")
+                .arg("--archive")
+                .arg("--no-target-directory")
+                .arg(&server_dir)
+                .arg(&partial_dir)
+                .status()
+                .and_then(check_status)?;
+
+            desktop(&partial_dir)
+        })?;
+
+    let (image_dir, image_rebuilt) = cache.build("image", desktop_rebuilt, |partial_dir| {
         fs::create_dir(&partial_dir)?;
 
         //TODO: move logic to Rust as much as possible
@@ -221,11 +286,11 @@ pub fn bin() -> io::Result<()> {
                         .and_then(check_status)?;
                 }
 
-                log::info!("Copying chroot files");
+                log::info!("Copying desktop files");
                 Command::new("cp")
                     .arg("--archive")
                     .arg("--no-target-directory")
-                    .arg(&chroot_dir)
+                    .arg(&desktop_dir)
                     .arg(&mount_dir)
                     .status()
                     .and_then(check_status)?;
