@@ -188,7 +188,7 @@ fn image(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
 pub fn bin() -> io::Result<()> {
     //TODO: ensure there are no active mounts inside any of the partial directories before removal!
     let mut cache = Cache::new("build/cache", |name| {
-        ["debootstrap", "image", "server"].contains(&name)
+        ["debootstrap", "desktop", "image", "server"].contains(&name)
     })?;
 
     let (debootstrap_dir, debootstrap_rebuilt) =
