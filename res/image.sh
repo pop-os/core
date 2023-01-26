@@ -83,58 +83,87 @@ ln -s /usr/lib/systemd/system/pop-core-autologin.service /etc/systemd/system/gra
 
 ######## BOOTLOADER SETUP ########
 
-UNIFIED=1
 CMDLINE="root=UUID=${ROOT_UUID} ro"
 
-echo "Installing systemd-boot"
-bootctl install --make-machine-id-directory=no --no-variables
+TEMPDIR="$(mktemp --directory)"
+pushd "${TEMPDIR}"
+
+echo "Creating machine owner key"
+openssl req \
+    -newkey rsa:4096 \
+    -nodes \
+    -keyout /etc/kernelstub/mok.key \
+    -new \
+    -x509 \
+    -sha256 \
+    -days 3650 \
+    -subj "/CN=Machine Owner Key/" \
+    -out /etc/kernelstub/mok.crt
+
+echo "Copy shim to EFI boot directory"
+mkdir /efi/EFI
+mkdir /efi/EFI/BOOT
+cp /usr/lib/shim/shimx64.efi.signed /efi/EFI/BOOT/BOOTX64.EFI
+cp /usr/lib/shim/mmx64.efi /efi/EFI/BOOT/mmx64.efi
+
+echo "Adding SBAT to systemd-boot"
+cp /usr/lib/systemd/boot/efi/systemd-bootx64.efi systemd-bootx64.unsigned.efi
+SYSTEMD_VERSION="$(dpkg-query -Wf '${Version}' systemd)"
+cat > sbat.csv <<EOF
+sbat,1,SBAT Version,sbat,1,https://github.com/rhboot/shim/blob/main/SBAT.md
+systemd.pop-os,1,Pop!_OS,systemd,${SYSTEMD_VERSION},https://github.com/pop-os/systemd
+EOF
+objcopy \
+    --add-section .sbat=sbat.csv \
+    --change-section-vma .sbat=0x10000000 \
+    systemd-bootx64.unsigned.efi
+
+echo "Signing systemd-boot with machine owner key and copying to grubx64.efi"
+sbsign \
+    --key /etc/kernelstub/mok.key \
+    --cert /etc/kernelstub/mok.crt \
+    --output /efi/EFI/BOOT/grubx64.efi \
+    systemd-bootx64.unsigned.efi
+
+echo
 
 #TODO: fix issues with ROOT_UUID not being found: kernelstub --manage-only --no-loader --verbose
 
 echo "Creating EFI directory"
 EFI_DIR="EFI/Pop_OS-${ROOT_UUID}"
-mkdir -p "/efi/${EFI_DIR}"
+mkdir "/efi/${EFI_DIR}"
 
-if [ "${UNIFIED}" == "1" ]
-then
+echo "Creating mok.cer for enrollment"
+openssl x509 -outform DER -in /etc/kernelstub/mok.crt -out "/efi/${EFI_DIR}/mok.cer"
 
 echo "Creating unified kernel"
-CMDLINE_FILE="$(mktemp)"
-echo -n "${CMDLINE}" > "${CMDLINE_FILE}"
+echo -n "${CMDLINE}" > cmdline
 objcopy \
     --add-section .osrel=/usr/lib/os-release --change-section-vma .osrel=0x20000 \
-    --add-section .cmdline="${CMDLINE_FILE}" --change-section-vma .cmdline=0x30000 \
+    --add-section .cmdline=cmdline --change-section-vma .cmdline=0x30000 \
     --add-section .linux=/boot/vmlinuz --change-section-vma .linux=0x2000000 \
     --add-section .initrd=/boot/initrd.img --change-section-vma .initrd=0x3000000 \
     /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
-    "/efi/${EFI_DIR}/vmlinuz.efi"
-rm "${CMDLINE_FILE}"
+    vmlinuz.unsigned.efi
+
+echo "Signing unified kernel"
+sbsign \
+    --key /etc/kernelstub/mok.key \
+    --cert /etc/kernelstub/mok.crt \
+    --output "/efi/${EFI_DIR}/vmlinuz.efi" \
+    vmlinuz.unsigned.efi
+
+echo "Setting up loader configuration"
+mkdir /efi/loader
+cat > /efi/loader/loader.conf <<EOF
+default Pop_OS-current
+EOF
 
 echo "Setting up loader entry"
+mkdir /efi/loader/entries
 cat > /efi/loader/entries/Pop_OS-current.conf <<EOF
 title Pop!_OS
 efi /${EFI_DIR}/vmlinuz.efi
-EOF
-
-else
-
-echo "Copying kernel and initrd"
-cp /boot/vmlinuz "/efi/${EFI_DIR}/vmlinuz.efi"
-cp /boot/initrd.img "/efi/${EFI_DIR}/initrd.img"
-
-echo "Setting up loader entry"
-cat > /efi/loader/entries/Pop_OS-current.conf <<EOF
-title Pop!_OS
-linux /${EFI_DIR}/vmlinuz.efi
-initrd /${EFI_DIR}/initrd.img
-options ${CMDLINE}
-EOF
-
-fi
-
-echo "Setting up loader configuration"
-cat > /efi/loader/loader.conf <<EOF
-default Pop_OS-current
 EOF
 
 echo "Setting up fstab"
@@ -152,6 +181,9 @@ EOF
 
 echo "Enabling kernelstub"
 sed -i 's/"live_mode": true,/"live_mode": false,/' /etc/kernelstub/configuration
+
+popd
+rm -rf "${TEMPDIR}"
 
 ######## MISC SETUP (MOVE TO CHROOT.SH?) ########
 

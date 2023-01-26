@@ -8,6 +8,7 @@ PACKAGES=(
     linux-system76
     network-manager
     pop-default-settings
+    shim-signed # for secure boot
     # Desktop
     alacritty
     cosmic-session
