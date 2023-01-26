@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+
+#TODO: rewrite in Rust and make more operations safe and atomic
+
+set -e
+
+ROOT_UUID="$(findmnt --noheadings --output UUID --mountpoint /)"
+if [ -z "${ROOT_UUID}" ]
+then
+    echo "Failed to find root UUID" >&2
+    exit 1
+fi
+
+echo "Creating temporary directory"
+TOP_DIR="/tmp/pop-core-change"
+mkdir "${TOP_DIR}"
+
+echo "Mounting btrfs top level"
+mount -o "subvol=/" "/dev/disk/by-uuid/${ROOT_UUID}" "${TOP_DIR}"
+
+# This prevents deletion of the root subvolume and allows deletion of other subvolumes
+echo "Setting / as default subvolume"
+btrfs subvolume set-default "/"
+
+if [ -d "${TOP_DIR}/@root.new" ]
+then
+    echo "Deleting @root.new"
+    btrfs subvolume delete "${TOP_DIR}/@root.new"
+fi
+
+echo "Creating writable snapshot of @root as @root.new"
+btrfs subvolume snapshot "${TOP_DIR}/@root" "${TOP_DIR}/@root.new"
+
+#TODO: fix bad /etc/resolv.conf!
+#TODO: should /var be mounted rw?
+echo "Running command in @root.new"
+systemd-nspawn \
+    --bind-ro="/home" \
+    --bind="/var" \
+    --directory="${TOP_DIR}/@root.new" \
+    --machine="${HOSTNAME}" \
+    --resolv-conf=replace-host \
+    "$@"
+
+echo "Setting @root.new as read-only"
+btrfs property set -t subvol "${TOP_DIR}/@root.new" ro true
+
+ROOT_SUBVOLID="$(btrfs inspect-internal rootid /)"
+
+if [ -d "${TOP_DIR}/@root.booted" ]
+then
+    if [ "$(btrfs inspect-internal rootid "${TOP_DIR}/@root.booted")" == "${ROOT_SUBVOLID}" ]
+    then
+        echo "Booted root already saved as @root.booted"
+    else
+        #TODO: save generations?
+        echo "Deleting @root.booted"
+        btrfs subvolume delete "${TOP_DIR}/@root.booted"
+    fi
+fi
+
+if [ ! -d "${TOP_DIR}/@root.booted" ]
+then
+    if [ "$(btrfs inspect-internal rootid "${TOP_DIR}/@root")" == "${ROOT_SUBVOLID}" ]
+    then
+        echo "Moving @root to @root.booted"
+        mv --no-target-directory "${TOP_DIR}/@root" "${TOP_DIR}/@root.booted"
+    else
+        echo "Booted root is not the same subvolume as @root" >&2
+        exit 1
+    fi
+fi
+
+if [ -d "${TOP_DIR}/@root" ]
+then
+    if [ "$(btrfs inspect-internal rootid "${TOP_DIR}/@root")" == "${ROOT_SUBVOLID}" ]
+    then
+        echo "Booted root still at @root"
+        exit 1
+    else
+        echo "Deleting @root"
+        btrfs subvolume delete "${TOP_DIR}/@root"
+    fi
+fi
+
+echo "Moving @root.new to @root"
+mv --no-target-directory "${TOP_DIR}/@root.new" "${TOP_DIR}/@root"
+
+echo "Setting @root as default subvolume"
+btrfs subvolume set-default "${TOP_DIR}/@root"
+
+echo "Unmounting btrfs top level"
+umount "${TOP_DIR}"
+
+echo "Removing temporary directory"
+rmdir "${TOP_DIR}"

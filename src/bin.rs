@@ -18,49 +18,50 @@ const SERVER_PACKAGES: &'static [&'static str] = &[
     "network-manager",
     "pop-default-settings",
     "shim-signed", // for secure boot
+    "systemd-container",
 ];
 
 const DESKTOP_PACKAGES: &'static [&'static str] = &[
     "alacritty",
     "cosmic-session",
     "flatpak",
-    "libegl1", // cosmic-comp dependency
+    "libegl1",         // cosmic-comp dependency
     "libgl1-mesa-dri", // cosmic-comp dependency
-    "libglib2.0-bin", // for gsettings command
+    "libglib2.0-bin",  // for gsettings command
     "pop-gtk-theme",
     "pop-icon-theme",
     "pop-wallpapers",
     "wireplumber",
 ];
 
-fn server(partial_dir: &Path) -> io::Result<()> {
+fn server(root_dir: &Path) -> io::Result<()> {
     log::info!("Resetting hostname");
     fs::write(
-        partial_dir.join("etc/hostname"),
+        root_dir.join("etc/hostname"),
         include_bytes!("../res/etc/hostname"),
     )?;
 
     log::info!("Resetting Ubuntu APT repository");
     fs::write(
-        partial_dir.join("etc/apt/sources.list"),
+        root_dir.join("etc/apt/sources.list"),
         include_bytes!("../res/etc/apt/sources.list"),
     )?;
     fs::write(
-        partial_dir.join("etc/apt/sources.list.d/system.sources"),
+        root_dir.join("etc/apt/sources.list.d/system.sources"),
         include_bytes!("../res/etc/apt/sources.list.d/system.sources"),
     )?;
 
     log::info!("Adding Pop!_OS APT repository");
     fs::write(
-        partial_dir.join("etc/apt/sources.list.d/pop-os-release.sources"),
+        root_dir.join("etc/apt/sources.list.d/pop-os-release.sources"),
         include_bytes!("../res/etc/apt/sources.list.d/pop-os-release.sources"),
     )?;
     fs::write(
-        partial_dir.join("etc/apt/trusted.gpg.d/pop-keyring-2017-archive.gpg"),
+        root_dir.join("etc/apt/trusted.gpg.d/pop-keyring-2017-archive.gpg"),
         include_bytes!("../res/etc/apt/trusted.gpg.d/pop-keyring-2017-archive.gpg"),
     )?;
 
-    let kernelstub_dir = partial_dir.join("etc/kernelstub");
+    let kernelstub_dir = root_dir.join("etc/kernelstub");
     if !kernelstub_dir.exists() {
         log::info!("Creating kernelstub configuration directory");
         fs::create_dir(&kernelstub_dir)?;
@@ -72,17 +73,14 @@ fn server(partial_dir: &Path) -> io::Result<()> {
     )?;
 
     log::info!("Copying apt script");
-    fs::write(
-        partial_dir.join("apt.sh"),
-        include_bytes!("../res/apt.sh"),
-    )?;
+    fs::write(root_dir.join("apt.sh"), include_bytes!("../res/apt.sh"))?;
 
     log::info!("Running apt script");
     Command::new("systemd-nspawn")
         .arg("--machine=pop-core-install")
         .arg("--resolv-conf=replace-host")
         .arg("-D")
-        .arg(&partial_dir)
+        .arg(&root_dir)
         .arg("bash")
         .arg("/apt.sh")
         .args(SERVER_PACKAGES)
@@ -90,24 +88,21 @@ fn server(partial_dir: &Path) -> io::Result<()> {
         .and_then(check_status)?;
 
     log::info!("Removing apt script");
-    fs::remove_file(partial_dir.join("apt.sh"))?;
+    fs::remove_file(root_dir.join("apt.sh"))?;
 
     Ok(())
 }
 
-fn desktop(partial_dir: &Path) -> io::Result<()> {
+fn desktop(root_dir: &Path) -> io::Result<()> {
     log::info!("Copying apt script");
-    fs::write(
-        partial_dir.join("apt.sh"),
-        include_bytes!("../res/apt.sh"),
-    )?;
+    fs::write(root_dir.join("apt.sh"), include_bytes!("../res/apt.sh"))?;
 
     log::info!("Running apt script");
     Command::new("systemd-nspawn")
         .arg("--machine=pop-core-install")
         .arg("--resolv-conf=replace-host")
         .arg("-D")
-        .arg(&partial_dir)
+        .arg(&root_dir)
         .arg("bash")
         .arg("/apt.sh")
         .args(SERVER_PACKAGES)
@@ -116,70 +111,34 @@ fn desktop(partial_dir: &Path) -> io::Result<()> {
         .and_then(check_status)?;
 
     log::info!("Removing apt script");
-    fs::remove_file(partial_dir.join("apt.sh"))?;
+    fs::remove_file(root_dir.join("apt.sh"))?;
 
     Ok(())
 }
 
-fn image(mount_dir: &Path, mount_efi_dir: &Path) -> io::Result<()> {
-    log::info!("Getting root UUID");
-    let root_uuid = {
-        let output = Command::new("findmnt")
-            .arg("--noheadings")
-            .arg("--output")
-            .arg("UUID")
-            .arg("--mountpoint")
-            .arg(&mount_dir)
-            .stdout(Stdio::piped())
-            .spawn()?
-            .wait_with_output()
-            .and_then(check_output)?;
-
-        str::from_utf8(&output.stdout)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?
-            .trim()
-            .to_string()
-    };
-
-    log::info!("Getting EFI PARTUUID");
-    let efi_partuuid = {
-        let output = Command::new("findmnt")
-            .arg("--noheadings")
-            .arg("--output")
-            .arg("PARTUUID")
-            .arg("--mountpoint")
-            .arg(&mount_efi_dir)
-            .stdout(Stdio::piped())
-            .spawn()?
-            .wait_with_output()
-            .and_then(check_output)?;
-
-        str::from_utf8(&output.stdout)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?
-            .trim()
-            .to_string()
-    };
+fn image(root_dir: &Path, root_uuid: &str) -> io::Result<()> {
+    log::info!("Copying pop-core binary");
+    fs::write(
+        root_dir.join("usr/bin/pop-core"),
+        include_bytes!("../res/usr/bin/pop-core"),
+    )?;
 
     log::info!("Copying image script");
-    fs::write(
-        mount_dir.join("image.sh"),
-        include_bytes!("../res/image.sh"),
-    )?;
+    fs::write(root_dir.join("image.sh"), include_bytes!("../res/image.sh"))?;
 
     log::info!("Running image script");
     Command::new("systemd-nspawn")
         .arg("--machine=pop-core-install")
         .arg("-D")
-        .arg(&mount_dir)
+        .arg(&root_dir)
         .arg("bash")
         .arg("/image.sh")
-        .arg(&root_uuid)
-        .arg(&efi_partuuid)
+        .arg(root_uuid)
         .status()
         .and_then(check_status)?;
 
     log::info!("Removing image script");
-    fs::remove_file(mount_dir.join("image.sh"))?;
+    fs::remove_file(root_dir.join("image.sh"))?;
 
     Ok(())
 }
@@ -212,19 +171,18 @@ pub fn bin() -> io::Result<()> {
             server(&partial_dir)
         })?;
 
-    let (desktop_dir, desktop_rebuilt) =
-        cache.build("desktop", server_rebuilt, |partial_dir| {
-            log::info!("Copying server files");
-            Command::new("cp")
-                .arg("--archive")
-                .arg("--no-target-directory")
-                .arg(&server_dir)
-                .arg(&partial_dir)
-                .status()
-                .and_then(check_status)?;
+    let (desktop_dir, desktop_rebuilt) = cache.build("desktop", server_rebuilt, |partial_dir| {
+        log::info!("Copying server files");
+        Command::new("cp")
+            .arg("--archive")
+            .arg("--no-target-directory")
+            .arg(&server_dir)
+            .arg(&partial_dir)
+            .status()
+            .and_then(check_status)?;
 
-            desktop(&partial_dir)
-        })?;
+        desktop(&partial_dir)
+    })?;
 
     let (image_dir, image_rebuilt) = cache.build("image", desktop_rebuilt, |partial_dir| {
         fs::create_dir(&partial_dir)?;
@@ -276,43 +234,91 @@ pub fn bin() -> io::Result<()> {
             let mount_dir = partial_dir.join("mount");
             fs::create_dir(&mount_dir)?;
             Mount::new(&part2_file, &mount_dir, "btrfs", 0, None)?.with(|_mount| {
-                for subvolume in &["home", "tmp", "var"] {
-                    log::info!("Creating subvolume for /{}", subvolume);
+                for subvolume in &["@root", "@root/home", "@root/tmp", "@root/var"] {
+                    log::info!("Creating subvolume {}", subvolume);
                     Command::new("btrfs")
                         .arg("subvolume")
                         .arg("create")
-                        .arg(mount_dir.join(subvolume))
+                        .arg(&mount_dir.join(subvolume))
                         .status()
                         .and_then(check_status)?;
                 }
+
+                log::info!("Setting subvolume @root as default");
+                let root_dir = mount_dir.join("@root");
+                Command::new("btrfs")
+                    .arg("subvolume")
+                    .arg("set-default")
+                    .arg(&root_dir)
+                    .status()
+                    .and_then(check_status)?;
 
                 log::info!("Copying desktop files");
                 Command::new("cp")
                     .arg("--archive")
                     .arg("--no-target-directory")
                     .arg(&desktop_dir)
-                    .arg(&mount_dir)
+                    .arg(&root_dir)
                     .status()
                     .and_then(check_status)?;
 
-                let mount_efi_dir = mount_dir.join("efi");
-                if !mount_efi_dir.exists() {
+                let efi_dir = root_dir.join("efi");
+                if !efi_dir.exists() {
                     log::info!("Creating EFI directory");
-                    fs::create_dir(&mount_efi_dir)?;
+                    fs::create_dir(&efi_dir)?;
                 }
 
-                log::info!("Mounting EFI directory");
-                Mount::new(&part1_file, &mount_efi_dir, "vfat", 0, None)?
-                    .with(|_mount_efi| image(&mount_dir, &mount_efi_dir))?;
+                log::info!("Getting root UUID");
+                let root_uuid = {
+                    let output = Command::new("findmnt")
+                        .arg("--noheadings")
+                        .arg("--output")
+                        .arg("UUID")
+                        .arg("--mountpoint")
+                        .arg(&mount_dir)
+                        .stdout(Stdio::piped())
+                        .spawn()?
+                        .wait_with_output()
+                        .and_then(check_output)?;
 
-                log::info!("Make root read-only");
+                    str::from_utf8(&output.stdout)
+                        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?
+                        .trim()
+                        .to_string()
+                };
+
+                log::info!("Mounting EFI directory");
+                Mount::new(&part1_file, &efi_dir, "vfat", 0, None)?
+                    .with(|_efi_mount| image(&root_dir, &root_uuid))?;
+
+                for (old, new) in &[
+                    ("@root/home", "@home"),
+                    ("@root/tmp", "@tmp"),
+                    ("@root/var", "@var"),
+                ] {
+                    log::info!("Moving subvolume {} to {}", old, new);
+                    fs::rename(&mount_dir.join(old), &mount_dir.join(new))?;
+                    fs::create_dir(&mount_dir.join(old))?;
+                }
+
+                log::info!("Make subvolume @root read-only");
                 Command::new("btrfs")
                     .arg("property")
                     .arg("set")
                     .arg("-ts")
-                    .arg(&mount_dir)
+                    .arg(&root_dir)
                     .arg("ro")
                     .arg("true")
+                    .status()
+                    .and_then(check_status)?;
+
+                log::info!("Snapshot @root as @root.original");
+                Command::new("btrfs")
+                    .arg("subvolume")
+                    .arg("snapshot")
+                    .arg("-r")
+                    .arg(&root_dir)
+                    .arg(&mount_dir.join("@root.original"))
                     .status()
                     .and_then(check_status)?;
 

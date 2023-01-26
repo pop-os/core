@@ -7,10 +7,9 @@ then
 fi
 
 ROOT_UUID="$1"
-EFI_PARTUUID="$2"
-if [ -z "$ROOT_UUID" -o -z "${EFI_PARTUUID}" ]
+if [ -z "$ROOT_UUID" ]
 then
-    echo "$0 [root uuid] [efi partuuid]" >&2
+    echo "$0 [root uuid]" >&2
     exit 1
 fi
 
@@ -83,7 +82,7 @@ ln -s /usr/lib/systemd/system/pop-core-autologin.service /etc/systemd/system/gra
 
 ######## BOOTLOADER SETUP ########
 
-CMDLINE="root=UUID=${ROOT_UUID} ro"
+CMDLINE="root=UUID=${ROOT_UUID} rw"
 
 TEMPDIR="$(mktemp --directory)"
 pushd "${TEMPDIR}"
@@ -135,6 +134,7 @@ mkdir "/efi/${EFI_DIR}"
 
 echo "Creating mok.cer for enrollment"
 openssl x509 -outform DER -in /etc/kernelstub/mok.crt -out "/efi/${EFI_DIR}/mok.cer"
+cp "/efi/${EFI_DIR}/mok.cer" "/efi/MOK-Pop_OS-${ROOT_UUID}.cer"
 
 echo "Creating unified kernel"
 echo -n "${CMDLINE}" > cmdline
@@ -157,6 +157,7 @@ echo "Setting up loader configuration"
 mkdir /efi/loader
 cat > /efi/loader/loader.conf <<EOF
 default Pop_OS-current
+timeout 60
 EOF
 
 echo "Setting up loader entry"
@@ -175,8 +176,11 @@ cat > /etc/fstab <<EOF
 # that works even if disks are added and removed. See fstab(5).
 #
 # <file system>  <mount point>  <type>  <options>  <dump>  <pass>
-UUID=${ROOT_UUID}  /  btrfs  defaults  0  1
-PARTUUID=${EFI_PARTUUID}  /efi  vfat  umask=0077  0  0
+#
+# NOTE: / and /efi are automatically mounted and do not require entries
+UUID=${ROOT_UUID}  /home  btrfs  defaults,subvol=@home  0  0
+UUID=${ROOT_UUID}  /tmp  btrfs  defaults,subvol=@tmp  0  0
+UUID=${ROOT_UUID}  /var  btrfs  defaults,subvol=@var  0  0
 EOF
 
 echo "Enabling kernelstub"
@@ -194,21 +198,26 @@ touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
 echo "Setting up systemd-resolved"
 ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
-echo "Relocating folders"
-mv /media /var/media
-ln -s var/media /media
+echo "Setting up terminal hotkey"
+sed -i 's/gnome-terminal/alacritty/g' /etc/cosmic-comp/config.ron
 
-mv /mnt /var/mnt
-ln -s var/mnt /mnt
+echo "Making pop-core executable"
+chmod +x /usr/bin/pop-core
 
-mv /opt /var/opt
-ln -s var/opt /opt
-
-mv /root /home/root
-ln -s home/root /root
-
-mv /srv /var/srv
-ln -s var/srv /srv
-
-mv /usr/local /var/usrlocal
-ln -s var/usrlocal /usr/local
+RELOCATE=(
+    "/media:/var/media"
+    "/mnt:/var/mnt"
+    "/opt:/var/opt"
+    "/root:/home/root"
+    "/srv:/var/srv"
+    "/usr/local:/var/usrlocal"
+    "/var/lib/dpkg:/usr/varlibdpkg"
+)
+for config in "${RELOCATE[@]}"
+do
+    source="${config%:*}"
+    dest="${config##*:}"
+    echo "Relocating ${source} to ${dest}"
+    mv --no-clobber --no-target-directory "${source}" "${dest}"
+    ln --relative --symbolic "${dest}" "${source}"
+done
