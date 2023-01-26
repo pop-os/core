@@ -1,7 +1,7 @@
 use std::process;
 
 fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     match pop_core::bin() {
         Ok(()) => (),
