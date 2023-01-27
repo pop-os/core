@@ -17,9 +17,12 @@ SRC=\
 all: build/cache/image/image.raw
 
 target/release/pop-core: $(SRC)
-	cargo build --release
+	cargo build --release --bin pop-core
 
-build/cache/image/image.raw: target/release/pop-core
+target/release/pop-core-build: $(SRC) target/release/pop-core
+	cargo build --release --bin pop-core-build
+
+build/cache/image/image.raw: target/release/pop-core-build
 	mkdir -p build/cache
 	sudo $<
 

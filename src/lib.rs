@@ -1,5 +1,5 @@
-pub use self::bin::*;
-mod bin;
+pub use self::build::*;
+mod build;
 
 pub use self::cache::*;
 mod cache;
@@ -12,5 +12,8 @@ mod loopback;
 
 pub use self::mount::*;
 mod mount;
+
+pub use self::run::*;
+mod run;
 
 pub mod util;

@@ -117,11 +117,9 @@ fn desktop(root_dir: &Path) -> io::Result<()> {
 }
 
 fn image(root_dir: &Path, root_uuid: &str) -> io::Result<()> {
+    //TODO: use package for this
     log::info!("Copying pop-core binary");
-    fs::write(
-        root_dir.join("usr/bin/pop-core"),
-        include_bytes!("../res/usr/bin/pop-core"),
-    )?;
+    fs::copy("target/release/pop-core", root_dir.join("usr/bin/pop-core"))?;
 
     log::info!("Copying image script");
     fs::write(root_dir.join("image.sh"), include_bytes!("../res/image.sh"))?;
@@ -143,8 +141,7 @@ fn image(root_dir: &Path, root_uuid: &str) -> io::Result<()> {
     Ok(())
 }
 
-//TODO: use cache
-pub fn bin() -> io::Result<()> {
+pub fn build() -> io::Result<()> {
     //TODO: ensure there are no active mounts inside any of the partial directories before removal!
     let mut cache = Cache::new("build/cache", |name| {
         ["debootstrap", "desktop", "image", "server"].contains(&name)
