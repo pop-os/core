@@ -12,6 +12,7 @@ use crate::{
 
 fn btrfs_subvolid<P: AsRef<Path>>(path: P) -> io::Result<String> {
     let output = Command::new("btrfs")
+        .arg("--quiet")
         .arg("inspect-internal")
         .arg("rootid")
         .arg(path.as_ref())
@@ -27,10 +28,10 @@ fn btrfs_subvolid<P: AsRef<Path>>(path: P) -> io::Result<String> {
 
 //TODO: could use atomic swaps (renameat2?)
 fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io::Result<()> {
-    log::info!("Getting root subvolid");
+    log::debug!("Getting root subvolid");
     let root_subvolid = btrfs_subvolid("/")?;
 
-    log::info!("Getting hostname");
+    log::debug!("Getting hostname");
     let hostname = fs::read_to_string("/etc/hostname")?.trim().to_string();
 
     //TODO: use generation
@@ -45,8 +46,9 @@ fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io:
                 "Booted root somehow at @root.new",
             ));
         } else {
-            log::info!("Deleting @root.new");
+            log::debug!("Deleting @root.new");
             Command::new("btrfs")
+                .arg("--quiet")
                 .arg("subvolume")
                 .arg("delete")
                 .arg(&root_new)
@@ -55,8 +57,9 @@ fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io:
         }
     }
 
-    log::info!("Creating writable snapshot of @root named @root.new");
+    log::debug!("Creating writable snapshot of @root named @root.new");
     Command::new("btrfs")
+        .arg("--quiet")
         .arg("subvolume")
         .arg("snapshot")
         .arg(&root)
@@ -64,25 +67,29 @@ fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io:
         .status()
         .and_then(check_status)?;
 
-    //TODO: capture result
-    log::info!("Running command in container");
+    //TODO: capture result and cleanup @root.new?
+    log::debug!("Running command in container");
     Command::new("systemd-nspawn")
         .arg("--bind-ro=/home")
+        //TODO: should more of /run be bind mounted?
+        .arg("--bind-ro=/run/systemd/resolve/stub-resolv.conf")
         //TODO: should /var be snapshotted or readonly?
         .arg("--bind=/var")
         .arg(&format!("--directory={}", root_new.display()))
+        .arg("--link-journal=no")
         .arg(&format!("--machine={}", &hostname))
         .arg("--quiet")
-        //TODO: fix bad /etc/resolv.conf!
-        .arg("--resolv-conf=replace-host")
+        .arg("--resolv-conf=off")
+        .arg("--timezone=off")
         .arg("--")
         .arg(command)
         .args(args)
         .status()
         .and_then(check_status)?;
 
-    log::info!("Setting @root.new as read-only");
+    log::debug!("Setting @root.new as read-only");
     Command::new("btrfs")
+        .arg("--quiet")
         .arg("property")
         .arg("set")
         .arg("-t")
@@ -93,22 +100,24 @@ fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io:
         .status()
         .and_then(check_status)?;
 
-    log::info!("Setting / as default subvolume");
+    log::debug!("Setting / as default subvolume");
     Command::new("btrfs")
+        .arg("--quiet")
         .arg("subvolume")
         .arg("set-default")
         .arg("/")
         .status()
         .and_then(check_status)?;
 
-    log::info!("Saving booted root as @root.old");
+    log::debug!("Saving booted root as @root.old");
     {
         if root_old.exists() {
             if btrfs_subvolid(&root_old)? == root_subvolid {
-                log::info!("Booted root already saved as @root.old");
+                log::debug!("Booted root already saved as @root.old");
             } else {
-                log::info!("Deleting @root.old");
+                log::debug!("Deleting @root.old");
                 Command::new("btrfs")
+                    .arg("--quiet")
                     .arg("subvolume")
                     .arg("delete")
                     .arg(&root_old)
@@ -119,7 +128,7 @@ fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io:
 
         if !root_old.exists() {
             if btrfs_subvolid(&root)? == root_subvolid {
-                log::info!("Moving @root to @root.old");
+                log::debug!("Moving @root to @root.old");
                 fs::rename(&root, &root_old)?;
             } else {
                 return Err(io::Error::new(
@@ -130,7 +139,7 @@ fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io:
         }
     }
 
-    log::info!("Saving @root.new as @root");
+    log::debug!("Saving @root.new as @root");
     {
         if root.exists() {
             if btrfs_subvolid(&root)? == root_subvolid {
@@ -139,8 +148,9 @@ fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io:
                     "Booted root still at @root",
                 ));
             } else {
-                log::info!("Deleting @root");
+                log::debug!("Deleting @root");
                 Command::new("btrfs")
+                    .arg("--quiet")
                     .arg("subvolume")
                     .arg("delete")
                     .arg(&root)
@@ -149,12 +159,13 @@ fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io:
             }
         }
 
-        log::info!("Moving @root.new to @root");
+        log::debug!("Moving @root.new to @root");
         fs::rename(&root_new, &root)?;
     }
 
-    log::info!("Setting @root as default subvolume");
+    log::debug!("Setting @root as default subvolume");
     Command::new("btrfs")
+        .arg("--quiet")
         .arg("subvolume")
         .arg("set-default")
         .arg(&root)
@@ -173,7 +184,7 @@ pub fn run(command: String, args: Vec<String>) -> io::Result<()> {
     }
 
     //TODO: get root uuid without an external command
-    log::info!("Getting root UUID");
+    log::debug!("Getting root UUID");
     let root_uuid = {
         let output = Command::new("findmnt")
             .arg("--noheadings")
@@ -201,10 +212,10 @@ pub fn run(command: String, args: Vec<String>) -> io::Result<()> {
     }
 
     // This atomically ensures only one pop-core is doing changes at a time
-    log::info!("Creating temporary directory");
+    log::debug!("Creating temporary directory");
     fs::create_dir(&top_dir)?;
 
-    log::info!("Mounting btrfs top level");
+    log::debug!("Mounting btrfs top level");
     let mut mount = Mount::new(
         &Path::new("/dev/disk/by-uuid").join(root_uuid),
         &top_dir,
@@ -215,10 +226,10 @@ pub fn run(command: String, args: Vec<String>) -> io::Result<()> {
 
     let res = run_with_top_dir(&top_dir, &command, &args);
 
-    log::info!("Unmounting btrfs top level");
+    log::debug!("Unmounting btrfs top level");
     match mount.unmount(false) {
         Ok(()) => {
-            log::info!("Removing temporary directory");
+            log::debug!("Removing temporary directory");
             fs::remove_dir(&top_dir)?;
         }
         Err(err) => {
