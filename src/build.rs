@@ -309,6 +309,16 @@ pub fn build() -> io::Result<()> {
                     .status()
                     .and_then(check_status)?;
 
+                log::info!("Snapshot @root as @root.old");
+                Command::new("btrfs")
+                    .arg("subvolume")
+                    .arg("snapshot")
+                    .arg("-r")
+                    .arg(&root_dir)
+                    .arg(&mount_dir.join("@root.old"))
+                    .status()
+                    .and_then(check_status)?;
+
                 log::info!("Snapshot @root as @root.original");
                 Command::new("btrfs")
                     .arg("subvolume")

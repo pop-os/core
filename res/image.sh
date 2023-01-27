@@ -167,6 +167,18 @@ title Pop!_OS
 efi /${EFI_DIR}/vmlinuz.efi
 EOF
 
+cat > /efi/loader/entries/Pop_OS-old.conf <<EOF
+title Pop!_OS (@root.old)
+efi /${EFI_DIR}/vmlinuz.efi
+options ${CMDLINE} rootflags=subvol=@root.old
+EOF
+
+cat > /efi/loader/entries/Pop_OS-original.conf <<EOF
+title Pop!_OS (@root.original)
+efi /${EFI_DIR}/vmlinuz.efi
+options ${CMDLINE} rootflags=subvol=@root.original
+EOF
+
 echo "Setting up fstab"
 cat > /etc/fstab <<EOF
 # /etc/fstab: static file system information.
@@ -210,8 +222,9 @@ RELOCATE=(
     "/opt:/var/opt"
     "/root:/home/root"
     "/srv:/var/srv"
-    "/usr/local:/var/usrlocal"
-    "/var/lib/dpkg:/usr/varlibdpkg"
+    "/usr/local:/var/usr_local"
+    "/var/lib/apt:/usr/var_lib_apt"
+    "/var/lib/dpkg:/usr/var_lib_dpkg"
 )
 for config in "${RELOCATE[@]}"
 do

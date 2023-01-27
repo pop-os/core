@@ -72,6 +72,7 @@ fn run_with_top_dir(top_dir: &Path, command: &String, args: &Vec<String>) -> io:
         .arg("--bind=/var")
         .arg(&format!("--directory={}", root_new.display()))
         .arg(&format!("--machine={}", &hostname))
+        .arg("--quiet")
         //TODO: fix bad /etc/resolv.conf!
         .arg("--resolv-conf=replace-host")
         .arg("--")
@@ -170,8 +171,6 @@ pub fn run(command: String, args: Vec<String>) -> io::Result<()> {
             "must be run as root",
         ));
     }
-
-    log::info!("Running {} {:?}", command, args);
 
     //TODO: get root uuid without an external command
     log::info!("Getting root UUID");
