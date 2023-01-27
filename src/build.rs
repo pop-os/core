@@ -41,7 +41,7 @@ fn server(root_dir: &Path) -> io::Result<()> {
         include_bytes!("../res/etc/hostname"),
     )?;
 
-    log::info!("Resetting Ubuntu APT repository");
+    log::info!("Resetting Pop!_OS System APT repository");
     fs::write(
         root_dir.join("etc/apt/sources.list"),
         include_bytes!("../res/etc/apt/sources.list"),
@@ -51,7 +51,7 @@ fn server(root_dir: &Path) -> io::Result<()> {
         include_bytes!("../res/etc/apt/sources.list.d/system.sources"),
     )?;
 
-    log::info!("Adding Pop!_OS APT repository");
+    log::info!("Adding Pop!_OS Release APT repository");
     fs::write(
         root_dir.join("etc/apt/sources.list.d/pop-os-release.sources"),
         include_bytes!("../res/etc/apt/sources.list.d/pop-os-release.sources"),
@@ -59,6 +59,12 @@ fn server(root_dir: &Path) -> io::Result<()> {
     fs::write(
         root_dir.join("etc/apt/trusted.gpg.d/pop-keyring-2017-archive.gpg"),
         include_bytes!("../res/etc/apt/trusted.gpg.d/pop-keyring-2017-archive.gpg"),
+    )?;
+
+    log::info!("Adding Pop!_OS Applications APT repository");
+    fs::write(
+        root_dir.join("etc/apt/sources.list.d/pop-os-apps.sources"),
+        include_bytes!("../res/etc/apt/sources.list.d/pop-os-release.sources"),
     )?;
 
     let kernelstub_dir = root_dir.join("etc/kernelstub");
