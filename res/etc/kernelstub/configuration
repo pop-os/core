@@ -6,7 +6,7 @@
             "systemd.show_status=false",
             "splash"
         ],
-        "esp_path": "/efi",
+        "esp_path": "/boot/efi",
         "setup_loader": true,
         "manage_mode": true,
         "force_update": false,
@@ -20,7 +20,7 @@
             "systemd.show_status=false",
             "splash"
         ],
-        "esp_path": "/efi",
+        "esp_path": "/boot/efi",
         "setup_loader": true,
         "manage_mode": true,
         "force_update": false,

@@ -7,9 +7,10 @@ then
 fi
 
 ROOT_UUID="$1"
-if [ -z "$ROOT_UUID" ]
+EFI_PARTUUID="$2"
+if [ -z "${ROOT_UUID}" -o -z "${EFI_PARTUUID}" ]
 then
-    echo "$0 [root uuid]" >&2
+    echo "$0 [root uuid] [efi partuuid]" >&2
     exit 1
 fi
 
@@ -100,10 +101,10 @@ openssl req \
     -out /etc/kernelstub/mok.crt
 
 echo "Copy shim to EFI boot directory"
-mkdir /efi/EFI
-mkdir /efi/EFI/BOOT
-cp /usr/lib/shim/shimx64.efi.signed /efi/EFI/BOOT/BOOTX64.EFI
-cp /usr/lib/shim/mmx64.efi /efi/EFI/BOOT/mmx64.efi
+mkdir /boot/efi/EFI
+mkdir /boot/efi/EFI/BOOT
+cp /usr/lib/shim/shimx64.efi.signed /boot/efi/EFI/BOOT/BOOTX64.EFI
+cp /usr/lib/shim/mmx64.efi /boot/efi/EFI/BOOT/mmx64.efi
 
 echo "Adding SBAT to systemd-boot"
 cp /usr/lib/systemd/boot/efi/systemd-bootx64.efi systemd-bootx64.unsigned.efi
@@ -121,7 +122,7 @@ echo "Signing systemd-boot with machine owner key and copying to grubx64.efi"
 sbsign \
     --key /etc/kernelstub/mok.key \
     --cert /etc/kernelstub/mok.crt \
-    --output /efi/EFI/BOOT/grubx64.efi \
+    --output /boot/efi/EFI/BOOT/grubx64.efi \
     systemd-bootx64.unsigned.efi
 
 echo
@@ -130,11 +131,11 @@ echo
 
 echo "Creating EFI directory"
 EFI_DIR="EFI/Pop_OS-${ROOT_UUID}"
-mkdir "/efi/${EFI_DIR}"
+mkdir "/boot/efi/${EFI_DIR}"
 
 echo "Creating mok.cer for enrollment"
-openssl x509 -outform DER -in /etc/kernelstub/mok.crt -out "/efi/${EFI_DIR}/mok.cer"
-cp "/efi/${EFI_DIR}/mok.cer" "/efi/MOK-Pop_OS-${ROOT_UUID}.cer"
+openssl x509 -outform DER -in /etc/kernelstub/mok.crt -out "/boot/efi/${EFI_DIR}/mok.cer"
+cp "/boot/efi/${EFI_DIR}/mok.cer" "/boot/efi/MOK-Pop_OS-${ROOT_UUID}.cer"
 
 echo "Creating unified kernel"
 echo -n "${CMDLINE}" > cmdline
@@ -150,30 +151,30 @@ echo "Signing unified kernel"
 sbsign \
     --key /etc/kernelstub/mok.key \
     --cert /etc/kernelstub/mok.crt \
-    --output "/efi/${EFI_DIR}/vmlinuz.efi" \
+    --output "/boot/efi/${EFI_DIR}/vmlinuz.efi" \
     vmlinuz.unsigned.efi
 
 echo "Setting up loader configuration"
-mkdir /efi/loader
-cat > /efi/loader/loader.conf <<EOF
+mkdir /boot/efi/loader
+cat > /boot/efi/loader/loader.conf <<EOF
 default Pop_OS-current
 timeout 60
 EOF
 
 echo "Setting up loader entry"
-mkdir /efi/loader/entries
-cat > /efi/loader/entries/Pop_OS-current.conf <<EOF
+mkdir /boot/efi/loader/entries
+cat > /boot/efi/loader/entries/Pop_OS-current.conf <<EOF
 title Pop!_OS
 efi /${EFI_DIR}/vmlinuz.efi
 EOF
 
-cat > /efi/loader/entries/Pop_OS-old.conf <<EOF
+cat > /boot/efi/loader/entries/Pop_OS-old.conf <<EOF
 title Pop!_OS (@root.old)
 efi /${EFI_DIR}/vmlinuz.efi
 options ${CMDLINE} rootflags=subvol=@root.old
 EOF
 
-cat > /efi/loader/entries/Pop_OS-original.conf <<EOF
+cat > /boot/efi/loader/entries/Pop_OS-original.conf <<EOF
 title Pop!_OS (@root.original)
 efi /${EFI_DIR}/vmlinuz.efi
 options ${CMDLINE} rootflags=subvol=@root.original
@@ -189,7 +190,8 @@ cat > /etc/fstab <<EOF
 #
 # <file system>  <mount point>  <type>  <options>  <dump>  <pass>
 #
-# NOTE: / and /efi are automatically mounted and do not require entries
+# NOTE: / is automatically mounted and does not require an entry
+PARTUUID=${EFI_PARTUUID}  /boot/efi  vfat  umask=0077  0  0
 UUID=${ROOT_UUID}  /home  btrfs  defaults,subvol=@home  0  0
 UUID=${ROOT_UUID}  /tmp  btrfs  defaults,subvol=@tmp  0  0
 UUID=${ROOT_UUID}  /var  btrfs  defaults,subvol=@var  0  0

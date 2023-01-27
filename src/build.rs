@@ -116,7 +116,7 @@ fn desktop(root_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn image(root_dir: &Path, root_uuid: &str) -> io::Result<()> {
+fn image(root_dir: &Path, root_uuid: &str, efi_partuuid: &str) -> io::Result<()> {
     //TODO: use package for this
     log::info!("Copying pop-core binary");
     fs::copy("target/release/pop-core", root_dir.join("usr/bin/pop-core"))?;
@@ -132,6 +132,7 @@ fn image(root_dir: &Path, root_uuid: &str) -> io::Result<()> {
         .arg("bash")
         .arg("/image.sh")
         .arg(root_uuid)
+        .arg(efi_partuuid)
         .status()
         .and_then(check_status)?;
 
@@ -190,7 +191,7 @@ pub fn build() -> io::Result<()> {
         let image_file = partial_dir.join("image.raw");
         Command::new("fallocate")
             .arg("--length")
-            .arg("8GiB")
+            .arg("32GiB")
             .arg("--posix")
             .arg(&image_file)
             .status()
@@ -259,34 +260,51 @@ pub fn build() -> io::Result<()> {
                     .status()
                     .and_then(check_status)?;
 
-                let efi_dir = root_dir.join("efi");
+                let efi_dir = root_dir.join("boot/efi");
                 if !efi_dir.exists() {
                     log::info!("Creating EFI directory");
                     fs::create_dir(&efi_dir)?;
                 }
 
-                log::info!("Getting root UUID");
-                let root_uuid = {
-                    let output = Command::new("findmnt")
-                        .arg("--noheadings")
-                        .arg("--output")
-                        .arg("UUID")
-                        .arg("--mountpoint")
-                        .arg(&mount_dir)
-                        .stdout(Stdio::piped())
-                        .spawn()?
-                        .wait_with_output()
-                        .and_then(check_output)?;
-
-                    str::from_utf8(&output.stdout)
-                        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?
-                        .trim()
-                        .to_string()
-                };
-
                 log::info!("Mounting EFI directory");
-                Mount::new(&part1_file, &efi_dir, "vfat", 0, None)?
-                    .with(|_efi_mount| image(&root_dir, &root_uuid))?;
+                Mount::new(&part1_file, &efi_dir, "vfat", 0, None)?.with(|_efi_mount| {
+                    log::info!("Getting root UUID");
+                    let root_uuid = {
+                        let output = Command::new("findmnt")
+                            .arg("--noheadings")
+                            .arg("--output")
+                            .arg("UUID")
+                            .arg("--mountpoint")
+                            .arg(&mount_dir)
+                            .stdout(Stdio::piped())
+                            .spawn()?
+                            .wait_with_output()
+                            .and_then(check_output)?;
+
+                        str::from_utf8(&output.stdout)
+                            .map(|x| x.trim().to_string())
+                            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?
+                    };
+
+                    let efi_partuuid = {
+                        let output = Command::new("findmnt")
+                            .arg("--noheadings")
+                            .arg("--output")
+                            .arg("PARTUUID")
+                            .arg("--mountpoint")
+                            .arg(&efi_dir)
+                            .stdout(Stdio::piped())
+                            .spawn()?
+                            .wait_with_output()
+                            .and_then(check_output)?;
+
+                        str::from_utf8(&output.stdout)
+                            .map(|x| x.trim().to_string())
+                            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?
+                    };
+
+                    image(&root_dir, &root_uuid, &efi_partuuid)
+                })?;
 
                 for (old, new) in &[
                     ("@root/home", "@home"),
