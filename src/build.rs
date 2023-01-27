@@ -322,17 +322,6 @@ pub fn build() -> io::Result<()> {
                     fs::create_dir(&mount_dir.join(old))?;
                 }
 
-                log::info!("Make subvolume @root read-only");
-                Command::new("btrfs")
-                    .arg("property")
-                    .arg("set")
-                    .arg("-ts")
-                    .arg(&root_dir)
-                    .arg("ro")
-                    .arg("true")
-                    .status()
-                    .and_then(check_status)?;
-
                 log::info!("Snapshot @root as @root.old");
                 Command::new("btrfs")
                     .arg("subvolume")

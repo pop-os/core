@@ -40,7 +40,7 @@ echo "${USER}:${USER}" | chpasswd
 
 ######## BOOTLOADER SETUP ########
 
-CMDLINE="root=UUID=${ROOT_UUID} rw"
+CMDLINE="root=UUID=${ROOT_UUID} ro"
 
 TEMPDIR="$(mktemp --directory)"
 pushd "${TEMPDIR}"
